@@ -1,4 +1,5 @@
 import shapeless._
+import shapeless.ops.record.Keys
 import shapeless.record._
 
 case class Book(author: String, title: String, id: Int, price: Double)
@@ -27,3 +28,11 @@ val ttt = something.toList.tail.tail.head
 
 h._1
 ttt._1
+
+val gen = Generic[Book]
+
+gen.to(book2)
+
+val s = LabelledGeneric[Book]
+val kz = Keys[s.Repr]
+kz()
