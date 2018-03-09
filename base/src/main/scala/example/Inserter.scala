@@ -54,9 +54,33 @@ object Inserter extends App {
     (f1 ++ f2 ++ f3 ++ f4).update
   }
 
-  def findAll[T, R <: HList, K <: HList](config: Config[T])(implicit labelledGeneric: LabelledGeneric.Aux[T,R], keys: Keys.Aux[R, K], toList: ToList[K, Any], composite: Composite[T]) = {
+  def sqlUpdate[T, K <: HList, V <: HList, Repr <: HList](a: T, tableName: String)(implicit
+                                                                                 labelledGeneric: LabelledGeneric.Aux[T, Repr],
+                                                                                 keys: Keys.Aux[Repr, K],
+                                                                                 values: Values.Aux[Repr, V],
+                                                                                 ktl: ToList[K, Any],
+                                                                                 vtl: ToList[V, Any]): Update0 = {
+
+    val lgen = labelledGeneric.to(a)
+    val columnNames = lgen.keys.toList.map(_.toString.substring(1))
+    val valueStrings = lgen.values.toList.map(_.toString).map(v => s"'$v'")
+    val updates = columnNames.zip(valueStrings).map {
+      case (colName, valString) => s"$colName = $valString"
+    }.mkString(",")
+
+    val idVal = columnNames.zip(valueStrings).toMap.getOrElse("id", "")
+
+    val f1 = fr"UPDATE "
+    val f2 = Fragment.const(tableName)
+    val f3 = Fragment.const(s"SET $updates")
+    val f4 = Fragment.const(s"WHERE ID = $idVal")
+
+    (f1 ++ f2 ++ f3 ++ f4).update
+  }
+
+  def findAll[T, R <: HList, K <: HList](config: Config[T], maybeFrag: Option[Fragment] = None)(implicit labelledGeneric: LabelledGeneric.Aux[T,R], keys: Keys.Aux[R, K], toList: ToList[K, Any], composite: Composite[T]) = {
     val keyStrings = keys().toList.map(_.toString.substring(1))
-    val frag = Fragment.const(s"SELECT ${keyStrings.mkString(",")} FROM ${config.name}")
+    val frag = Fragment.const(s"SELECT ${keyStrings.mkString(",")} FROM ${config.name}") ++ maybeFrag.getOrElse(Fragment.empty)
     frag.query[T]
   }
   val create: Update0 =
@@ -104,10 +128,18 @@ object Inserter extends App {
 
   val conf = Config[Book]("books")
 
-  val f = LabelledGeneric[Book]
-  val t = Keys[f.Repr]
-  val findRes3 = findAll(conf)
+  val allTheStuff = findAll(conf).to[List].transact(xa).unsafeRunSync()
+  println(allTheStuff)
 
-  val stuffzz = findRes3.to[List].transact(xa).unsafeRunSync()
-  println(stuffzz)
+  val notQuiteAllTheStuff = findAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
+  println(notQuiteAllTheStuff)
+
+  val updated = sqlUpdate(allTheStuff.head.copy(price = 100.0), "books").run.transact(xa).unsafeRunSync()
+  println(updated)
+
+  val maybeMoreStuff = findAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
+  println(maybeMoreStuff)
+
+  println(maybeMoreStuff.lengthCompare(notQuiteAllTheStuff.size) > 0)
+
 }
