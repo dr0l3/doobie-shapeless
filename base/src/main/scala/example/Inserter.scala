@@ -73,7 +73,7 @@ object Inserter extends App {
     val f1 = fr"UPDATE "
     val f2 = Fragment.const(tableName)
     val f3 = Fragment.const(s"SET $updates")
-    val f4 = Fragment.const(s"WHERE ID = $idVal")
+    val f4 = Fragment.const(s"WHERE id = $idVal")
 
     (f1 ++ f2 ++ f3 ++ f4).update
   }
@@ -88,9 +88,6 @@ object Inserter extends App {
     val lgen = labelledGeneric.to(a)
     val columnNames = lgen.keys.toList.map(_.toString.substring(1))
     val valueStrings = lgen.values.toList.map(_.toString).map(v => s"'$v'")
-    val updates = columnNames.zip(valueStrings).map {
-      case (colName, valString) => s"$colName = $valString"
-    }.mkString(",")
 
     val idVal = columnNames.zip(valueStrings).toMap.getOrElse("id", "")
 
@@ -101,7 +98,7 @@ object Inserter extends App {
     (f1 ++ f2 ++ f3).update
   }
 
-  def findAll[T, R <: HList, K <: HList](config: Config[T], maybeFrag: Option[Fragment] = None)(implicit labelledGeneric: LabelledGeneric.Aux[T,R], keys: Keys.Aux[R, K], toList: ToList[K, Any], composite: Composite[T]) = {
+  def sqlSelectAll[T, R <: HList, K <: HList](config: Config[T], maybeFrag: Option[Fragment] = None)(implicit labelledGeneric: LabelledGeneric.Aux[T,R], keys: Keys.Aux[R, K], toList: ToList[K, Any], composite: Composite[T]) = {
     val keyStrings = keys().toList.map(_.toString.substring(1))
     val frag = Fragment.const(s"SELECT ${keyStrings.mkString(",")} FROM ${config.name}") ++ maybeFrag.getOrElse(Fragment.empty)
     frag.query[T]
@@ -151,16 +148,16 @@ object Inserter extends App {
 
   val conf = Config[Book]("books")
 
-  val allTheStuff = findAll(conf).to[List].transact(xa).unsafeRunSync()
+  val allTheStuff = sqlSelectAll(conf).to[List].transact(xa).unsafeRunSync()
   println(allTheStuff)
 
-  val notQuiteAllTheStuff = findAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
+  val notQuiteAllTheStuff = sqlSelectAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
   println(notQuiteAllTheStuff)
 
   val updated = sqlUpdate(allTheStuff.head.copy(price = 100.0), "books").run.transact(xa).unsafeRunSync()
   println(updated)
 
-  val maybeMoreStuff = findAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
+  val maybeMoreStuff = sqlSelectAll(conf, Some(Fragment.const(s"where price > 2.5"))).to[List].transact(xa).unsafeRunSync()
   println(maybeMoreStuff)
 
   println(maybeMoreStuff.lengthCompare(notQuiteAllTheStuff.size) > 0)
@@ -169,7 +166,7 @@ object Inserter extends App {
   val deleted = sqlDelete(maybeMoreStuff.head, "books").run.transact(xa).unsafeRunSync()
   println(deleted)
 
-  val maybeLessStuff = findAll(conf).to[List].transact(xa).unsafeRunSync()
+  val maybeLessStuff = sqlSelectAll(conf).to[List].transact(xa).unsafeRunSync()
   println(maybeLessStuff)
 
   println(maybeLessStuff.lengthCompare(allTheStuff.size) < 0)
